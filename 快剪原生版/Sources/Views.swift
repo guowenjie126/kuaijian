@@ -424,17 +424,8 @@ struct SidebarView: View {
                         } label: {
                             ZStack {
                                 VStack(spacing: 5) {
-                                    if section == .calculator {
-                                        let calculatorIcon = NSWorkspace.shared.icon(forFile: "/System/Applications/Calculator.app")
-                                        Image(nsImage: calculatorIcon)
-                                            .resizable()
-                                            .interpolation(.high)
-                                            .scaledToFit()
-                                            .frame(width: 22, height: 22)
-                                    } else {
-                                        Image(systemName: section.icon)
-                                            .font(.system(size: 18, weight: .medium))
-                                    }
+                                    Image(systemName: section.icon)
+                                        .font(.system(size: section == .calculator ? 21 : 18, weight: .medium))
                                     Text(section.title)
                                         .font(.system(size: 11, weight: .medium))
                                 }
@@ -668,7 +659,7 @@ struct ClipboardRow: View {
                 .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.text.isEmpty ? item.title : item.text)
-                    .font(.system(size: 16, weight: .regular))
+                    .font(.system(size: 14, weight: .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
