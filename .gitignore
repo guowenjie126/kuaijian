@@ -1,0 +1,37 @@
+# macOS / Xcode build output
+.DS_Store
+build/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Windows / .NET build output
+bin/
+obj/
+publish/
+artifacts/
+
+# Node / server local files
+node_modules/
+dist/
+logs/
+data/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local databases and runtime files
+*.db
+*.sqlite
+*.sqlite3
+
+# Build packages; publish through GitHub Releases instead
+*.dmg
+*.exe
+*.msix
+*.zip
