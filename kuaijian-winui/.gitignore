@@ -1,0 +1,7 @@
+bin/
+obj/
+publish/
+artifacts/
+.vs/
+TestResults/
+runtime-tools/*.exe
