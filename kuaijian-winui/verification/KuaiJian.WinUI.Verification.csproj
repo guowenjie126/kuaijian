@@ -1,0 +1,68 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Platforms>x64</Platforms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\QaMatching.cs" Link="QaMatching.cs" />
+    <Compile Include="..\QaEntrySearchPolicy.cs" Link="QaEntrySearchPolicy.cs" />
+    <Compile Include="..\ClipboardSyncMerge.cs" Link="ClipboardSyncMerge.cs" />
+    <Compile Include="..\ClipboardSyncPolicy.cs" Link="ClipboardSyncPolicy.cs" />
+    <Compile Include="..\CloudSyncResponsePolicy.cs" Link="CloudSyncResponsePolicy.cs" />
+    <Compile Include="..\DeletedClipboardIdStore.cs" Link="DeletedClipboardIdStore.cs" />
+    <Compile Include="..\CancellableProcessWait.cs" Link="CancellableProcessWait.cs" />
+    <Compile Include="..\BoundedHttpContentReader.cs" Link="BoundedHttpContentReader.cs" />
+    <Compile Include="..\BoundedStreamReader.cs" Link="BoundedStreamReader.cs" />
+    <Compile Include="..\AuthResponsePolicy.cs" Link="AuthResponsePolicy.cs" />
+    <Compile Include="..\UserSessionPolicy.cs" Link="UserSessionPolicy.cs" />
+    <Compile Include="..\WindowClosePolicy.cs" Link="WindowClosePolicy.cs" />
+    <Compile Include="..\UserSettingsPolicy.cs" Link="UserSettingsPolicy.cs" />
+    <Compile Include="..\QaClipboardReadPolicy.cs" Link="QaClipboardReadPolicy.cs" />
+    <Compile Include="..\PasswordVisibilityPolicy.cs" Link="PasswordVisibilityPolicy.cs" />
+    <Compile Include="..\ClipboardWritePolicy.cs" Link="ClipboardWritePolicy.cs" />
+    <Compile Include="..\ClipboardIgnorePolicy.cs" Link="ClipboardIgnorePolicy.cs" />
+    <Compile Include="..\AuthInputPolicy.cs" Link="AuthInputPolicy.cs" />
+    <Compile Include="..\DownloadFileStore.cs" Link="DownloadFileStore.cs" />
+    <Compile Include="..\TransferChunkPolicy.cs" Link="TransferChunkPolicy.cs" />
+    <Compile Include="..\TransferDataPathPolicy.cs" Link="TransferDataPathPolicy.cs" />
+    <Compile Include="..\TransferReceiveCoordinator.cs" Link="TransferReceiveCoordinator.cs" />
+    <Compile Include="..\TransferFileSender.cs" Link="TransferFileSender.cs" />
+    <Compile Include="..\ResumableTransferSendSession.cs" Link="ResumableTransferSendSession.cs" />
+    <Compile Include="..\TransferSendCoordinator.cs" Link="TransferSendCoordinator.cs" />
+    <Compile Include="..\ResumableTransferReceiver.cs" Link="ResumableTransferReceiver.cs" />
+    <Compile Include="..\DownloadCompletionPolicy.cs" Link="DownloadCompletionPolicy.cs" />
+    <Compile Include="..\ResumableHttpDownload.cs" Link="ResumableHttpDownload.cs" />
+    <Compile Include="..\YtDlpResumePolicy.cs" Link="YtDlpResumePolicy.cs" />
+    <Compile Include="..\CalculatorEngine.cs" Link="CalculatorEngine.cs" />
+    <Compile Include="..\ClipboardUrlPolicy.cs" Link="ClipboardUrlPolicy.cs" />
+    <Compile Include="..\ClipboardCapturePolicy.cs" Link="ClipboardCapturePolicy.cs" />
+    <Compile Include="..\ClipboardContentIdentity.cs" Link="ClipboardContentIdentity.cs" />
+    <Compile Include="..\ClipboardCaptureCleanup.cs" Link="ClipboardCaptureCleanup.cs" />
+    <Compile Include="..\ClipboardImportFormatPolicy.cs" Link="ClipboardImportFormatPolicy.cs" />
+    <Compile Include="..\ClipboardImportMergePolicy.cs" Link="ClipboardImportMergePolicy.cs" />
+    <Compile Include="..\LegacyClipboardImportBudget.cs" Link="LegacyClipboardImportBudget.cs" />
+    <Compile Include="..\NavigationCollapsePolicy.cs" Link="NavigationCollapsePolicy.cs" />
+    <Compile Include="..\DownloadTaskOperationPolicy.cs" Link="DownloadTaskOperationPolicy.cs" />
+    <Compile Include="..\DownloadBrowserPolicy.cs" Link="DownloadBrowserPolicy.cs" />
+    <Compile Include="..\SettingsSectionPolicy.cs" Link="SettingsSectionPolicy.cs" />
+    <Compile Include="..\CalculatorButtonLayoutPolicy.cs" Link="CalculatorButtonLayoutPolicy.cs" />
+    <Compile Include="..\CalculatorKeyboardPolicy.cs" Link="CalculatorKeyboardPolicy.cs" />
+    <Compile Include="..\ImagePreviewScalePolicy.cs" Link="ImagePreviewScalePolicy.cs" />
+    <Compile Include="..\ClipboardHistoryCsvCodec.cs" Link="ClipboardHistoryCsvCodec.cs" />
+    <Compile Include="..\UserDataJsonStore.cs" Link="UserDataJsonStore.cs" />
+    <Compile Include="..\UserDataPathPolicy.cs" Link="UserDataPathPolicy.cs" />
+    <Compile Include="..\RelativeTimePolicy.cs" Link="RelativeTimePolicy.cs" />
+    <Compile Include="..\DownloadConcurrencyGate.cs" Link="DownloadConcurrencyGate.cs" />
+    <Compile Include="..\ClipboardRetentionPolicy.cs" Link="ClipboardRetentionPolicy.cs" />
+    <Compile Include="..\WindowsShell.cs" Link="WindowsShell.cs" />
+    <Compile Include="..\UpdateManifestPolicy.cs" Link="UpdateManifestPolicy.cs" />
+    <Compile Include="..\QaCsvCodec.cs" Link="QaCsvCodec.cs" />
+    <Compile Include="..\SupportedSitePolicy.cs" Link="SupportedSitePolicy.cs" />
+    <Compile Include="..\QaImportMergePolicy.cs" Link="QaImportMergePolicy.cs" />
+  </ItemGroup>
+</Project>
