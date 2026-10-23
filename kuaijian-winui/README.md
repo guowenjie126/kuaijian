@@ -73,6 +73,8 @@ dotnet run --project .\verification\KuaiJian.WinUI.Verification.csproj -c Debug 
 
 `runtime-tools\yt-dlp.exe` 和 `runtime-tools\ffmpeg.exe` 会随 x64 发布目录及安装包复制。当前校验值：
 
+注意：GitHub 源码仓库不提交这两个 `.exe`。其中 `ffmpeg.exe` 超过 GitHub 普通文件的单文件限制，仓库只保留 `THIRD-PARTY-NOTICES.txt` 和校验值；Windows 构建或发布前，需要从原始工程备份、GitHub Release 或其他受信来源将对应文件放入 `runtime-tools\`。缺少它们时，基础 HTTP/HTTPS 下载仍可用，多站点下载会提示依赖缺失。
+
 - yt-dlp 2026.08.19：`66674953FE251B89F4D08C5F0E35E0728679BD67AB3D7D05C0562AF101DD3E7A`
 - FFmpeg 9.0.2 Essentials：`3256173F3F8BFFD7DF12227C68ADF68025EDB1832273A9530688A7BB1ED8EDEC`
 
