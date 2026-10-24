@@ -17,7 +17,8 @@ DefaultDirName={localappdata}\Programs\KuaiJian
 DefaultGroupName={#MyAppName}
 OutputDir=installer
 OutputBaseFilename={#MyAppOutputBaseFilename}
-Compression=lzma2
+; Fast LZMA keeps the installer compact while avoiding very long CI compression runs.
+Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
