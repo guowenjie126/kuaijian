@@ -60,8 +60,18 @@ dotnet run -c Debug -p:Platform=x64
 输出：
 
 ```text
-installer\KuaiJian-0.4.0-Windows-x64-Setup.exe
+installer\KuaiJian-<版本号>-Windows-x64-Setup.exe
 ```
+
+## 自动更新发布
+
+仓库根目录的 `.github/workflows/windows-release.yml` 会在 `kuaijian-winui` 有新提交时，在 Windows Runner 上构建 x64 安装包并生成 `latest.json`。Windows 客户端读取公开的 `https://api.kuaijian.jingronghao.com/updates/windows/latest.json`；安装包可以放在官网的 `/downloads/` 目录，清单中的 `downloadURL` 指向对应安装包。设置页会校验 SHA-256 后下载并启动安装程序。
+
+发布新版本前，请先把 `installer.iss` 中的 `MyAppVersion` 从例如 `0.4.0` 改为 `0.4.1`，再提交到 `main`；也可以在 GitHub Actions 手动运行工作流并填写版本号。相同版本的 Release 不会被覆盖。
+
+由于 `runtime-tools\yt-dlp.exe` 和 `runtime-tools\ffmpeg.exe` 不提交到仓库，GitHub Actions 自动构建的安装包默认只包含基础 HTTP/HTTPS 下载能力；需要多站点下载时，应在 Windows Runner 的构建前安全注入这两个已核验的运行时文件。
+
+更新清单和安装包必须公开访问，不能让客户端携带 GitHub Token。当前 Windows 客户端已经固定读取 API 的 Windows 专用清单；该接口目前能公开返回空清单，发布 Windows 版本后需要将其更新为真实版本信息。
 
 运行无第三方测试框架的回归验证（剪贴板捕获策略与来源快照、账号目录隔离、用户 JSON 损坏备份和并发原子保存、问答/计算器、导入导出、HTTP/yt-dlp 续传、跨磁盘原子提交、下载完成行为、历史保留、安全边界、同步合并、删除清单、下载并发和子进程取消）：
 

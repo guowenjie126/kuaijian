@@ -12,8 +12,11 @@ namespace KuaiJian.WinUI;
 
 public static class AppInfo
 {
-    public const string CurrentVersion = "0.4.0";
-    public const string WindowsUpdateManifest = "https://api.kuaijian.jingronghao.com/updates/latest.json";
+    public const string FallbackVersion = "0.4.0";
+    public const string WindowsUpdateManifest = "https://api.kuaijian.jingronghao.com/updates/windows/latest.json";
+
+    public static string CurrentVersion =>
+        typeof(AppInfo).Assembly.GetName().Version?.ToString(3) ?? FallbackVersion;
 }
 
 public enum ClipKind
@@ -1107,11 +1110,16 @@ public sealed class UpdateInfo
 
 public sealed class UpdateService
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
+    private readonly HttpClient _http;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
+
+    public UpdateService()
+    {
+        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+    }
 
     public static bool IsNewer(UpdateInfo? info)
     {

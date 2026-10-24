@@ -1,4 +1,14 @@
+param(
+    [string]$Version = "0.4.0"
+)
+
 $ErrorActionPreference = "Stop"
+
+if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Version must use the three-part format major.minor.patch, for example 0.4.1."
+}
+
+$installerBaseName = "KuaiJian-$Version-Windows-x64-Setup"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $programFilesPath = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
@@ -53,7 +63,9 @@ Write-Host "Publishing the current Release build from an ASCII staging path..."
             "publish", $stageProject, "-c", "Release", "-r", "win-x64",
             "--self-contained", "true", "--no-restore", "-p:Platform=x64",
             "-p:WindowsAppSDKSelfContained=true", "-p:RestorePackagesPath=$packageRoot",
-            "-p:NuGetPackageRoot=$packageRoot", "-o", $publishDir
+            "-p:NuGetPackageRoot=$packageRoot", "-p:Version=$Version",
+            "-p:AssemblyVersion=$Version.0", "-p:FileVersion=$Version.0",
+            "-p:InformationalVersion=$Version", "-o", $publishDir
         )
         $publishProcess = Start-Process -FilePath $dotnetExe -ArgumentList $publishArgs -Wait -PassThru -NoNewWindow
         if ($publishProcess.ExitCode -ne 0) {
@@ -86,9 +98,14 @@ if (-not $isccCandidates) {
 
 New-Item -ItemType Directory -Force -Path $installerDir | Out-Null
 $isccPath = $isccCandidates | Select-Object -First 1
-$isccProcess = Start-Process -FilePath $isccPath -ArgumentList @($issPath) -Wait -PassThru -NoNewWindow
+$isccArguments = @(
+    $issPath,
+    "/DMyAppVersion=$Version",
+    "/DMyAppOutputBaseFilename=$installerBaseName"
+)
+$isccProcess = Start-Process -FilePath $isccPath -ArgumentList $isccArguments -Wait -PassThru -NoNewWindow
 if ($isccProcess.ExitCode -ne 0) {
     throw "Inno Setup compilation failed with exit code $($isccProcess.ExitCode)."
 }
 
-Write-Host ("Installer generated: " + (Join-Path $installerDir "KuaiJian-0.4.0-Windows-x64-Setup.exe"))
+Write-Host ("Installer generated: " + (Join-Path $installerDir "$installerBaseName.exe"))

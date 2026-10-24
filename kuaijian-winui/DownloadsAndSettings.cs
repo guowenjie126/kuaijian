@@ -706,7 +706,7 @@ public sealed class SettingsPage : Page
         var check = new Button { Content = "检查更新" };
         check.Click += async (_, _) => await CheckForUpdatesAsync(check);
         _content.Children.Add(check);
-        _downloadUpdate = new Button { Content = "下载并更新", Visibility = Visibility.Collapsed };
+        _downloadUpdate = new Button { Content = "更新到最新版本", Visibility = Visibility.Collapsed };
         _downloadUpdate.Click += async (_, _) => await DownloadAndLaunchUpdateAsync();
         _content.Children.Add(_downloadUpdate);
         var updateButton = _downloadUpdate;
