@@ -90,6 +90,8 @@ jobs:
           if (-not (Test-Path -LiteralPath $installerPath)) {
             throw "没有找到安装包：$installerPath"
           }
+          $archivePath = [IO.Path]::ChangeExtension($installerPath, ".zip")
+          Compress-Archive -LiteralPath $installerPath -DestinationPath $archivePath -CompressionLevel Fastest -Force
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installerPath).Hash.ToLowerInvariant()
           $downloadUrl = "https://kuaijian.jingronghao.com/downloads/KuaiJian-$env:RELEASE_VERSION-Windows-x64-Setup.exe"
           $notes = if ([string]::IsNullOrWhiteSpace($env:INPUT_NOTES)) { "Windows x64 自动构建版本 $env:RELEASE_VERSION" } else { $env:INPUT_NOTES }
@@ -103,6 +105,7 @@ jobs:
           $manifestPath = Join-Path $env:RUNNER_TEMP "latest.json"
           $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $manifestPath -Encoding utf8
           "installer=$installerPath" >> $env:GITHUB_OUTPUT
+          "archive=$archivePath" >> $env:GITHUB_OUTPUT
           "manifest=$manifestPath" >> $env:GITHUB_OUTPUT
 
       - name: Publish GitHub Release
@@ -114,10 +117,11 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
           RELEASE_NOTES: ${{ inputs.notes }}
           INSTALLER_PATH: ${{ steps.manifest.outputs.installer }}
+          ARCHIVE_PATH: ${{ steps.manifest.outputs.archive }}
           MANIFEST_PATH: ${{ steps.manifest.outputs.manifest }}
         run: |
           $notes = if ([string]::IsNullOrWhiteSpace($env:RELEASE_NOTES)) { "Windows x64 自动构建版本 $env:RELEASE_VERSION" } else { $env:RELEASE_NOTES }
-          gh release create $env:RELEASE_TAG $env:INSTALLER_PATH $env:MANIFEST_PATH `
+          gh release create $env:RELEASE_TAG $env:INSTALLER_PATH $env:ARCHIVE_PATH $env:MANIFEST_PATH `
             --repo $env:GITHUB_REPOSITORY `
             --target $env:GITHUB_SHA `
             --title "快剪 Windows v$env:RELEASE_VERSION" `
