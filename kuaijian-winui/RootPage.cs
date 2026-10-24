@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using System.Text.Json;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -18,6 +19,7 @@ public sealed class RootPage : Page
     public List<ClipboardItem> Items { get; set; } = new();
     public List<string> DeletedClipboardIds { get; private set; } = new();
     public List<QaEntry> QaEntries { get; set; } = new();
+    public List<ShortcutItem> Shortcuts { get; set; } = new();
     public List<string> CalculatorHistory { get; set; } = new();
     public List<DownloadTaskItem> DownloadTasks { get; set; } = new();
     public string? DownloadDirectory { get; set; }
@@ -111,6 +113,7 @@ public sealed class RootPage : Page
             var qaEntries = await Data.LoadQaAsync();
             var calculatorHistory = await Data.LoadCalculatorHistoryAsync();
             var downloadTasks = await Data.LoadDownloadsAsync();
+            var shortcuts = LoadShortcuts();
             if (Auth.CurrentUser?.Id != userId || Data.UserId != userId) return;
 
             DeletedClipboardIds = deletedIds;
@@ -118,6 +121,7 @@ public sealed class RootPage : Page
             if (Items.Count != items.Count)
                 await Data.SaveClipboardAsync(Items);
             QaEntries = qaEntries;
+            Shortcuts = shortcuts;
             CalculatorHistory = calculatorHistory;
             DownloadTasks = downloadTasks;
             DownloadDirectory = Setting("downloadDirectory", Path.Combine(
@@ -221,6 +225,9 @@ public sealed class RootPage : Page
         AddNavigationItem("问答", "qa", Symbol.Comment);
         AddNavigationItem("计算机", "calculator", Symbol.Calculator);
         AddNavigationItem("下载", "downloads", Symbol.Download);
+        AddNavigationItem("快捷", "shortcuts", Symbol.Keyboard);
+        AddNavigationItem("翻译", "translation", Symbol.Edit);
+        AddNavigationItem("连接", "connections", Symbol.Link);
         AddNavigationItem("收藏", "favorites", Symbol.Favorite);
         AddNavigationItem("互传", "transfer", Symbol.Share);
         _settingsItem = new NavigationViewItem
@@ -322,6 +329,9 @@ public sealed class RootPage : Page
                 _downloadsPage ??= new DownloadsPage(this);
                 _frame!.Content = _downloadsPage;
                 break;
+            case "shortcuts": _frame!.Content = new ShortcutsPage(this); break;
+            case "translation": _frame!.Content = new TranslationPage(this); break;
+            case "connections": _frame!.Content = new ConnectionsPage(this); break;
             case "transfer": _frame!.Content = new TransferPage(this); break;
             case "team": _frame!.Content = Placeholder("团队", "团队空间将在原生版第二阶段接入"); break;
             case "settings": _ = ShowSettingsDialogAsync(); break;
@@ -909,6 +919,24 @@ public sealed class RootPage : Page
         await Data.SaveCalculatorHistoryAsync(CalculatorHistory);
     }
 
+    private List<ShortcutItem> LoadShortcuts()
+    {
+        try
+        {
+            var raw = Setting("shortcuts", "[]");
+            return JsonSerializer.Deserialize<List<ShortcutItem>>(raw) ?? new();
+        }
+        catch
+        {
+            return new();
+        }
+    }
+
+    public void SaveShortcuts()
+    {
+        SetSetting("shortcuts", JsonSerializer.Serialize(Shortcuts));
+    }
+
     public void SetSetting(string key, object value)
     {
         var storageKey = UserSettingsPolicy.StorageKey(key, Auth.CurrentUser?.Id);
@@ -955,6 +983,7 @@ public sealed class RootPage : Page
         Items.Clear();
         DeletedClipboardIds.Clear();
         QaEntries.Clear();
+        Shortcuts.Clear();
         CalculatorHistory.Clear();
         DownloadTasks.Clear();
         DownloadDirectory = null;

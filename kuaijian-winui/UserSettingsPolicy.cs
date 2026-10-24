@@ -15,6 +15,7 @@ public static class UserSettingsPolicy
         "captureRichText",
         "qaAssistantEnabled",
         "qaAssistantSources",
+        "shortcuts",
         "alwaysOnTop",
         "closeToTrayEnabled",
         "doubleClickCollapseEnabled"

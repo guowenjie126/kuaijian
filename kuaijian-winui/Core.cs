@@ -12,7 +12,7 @@ namespace KuaiJian.WinUI;
 
 public static class AppInfo
 {
-    public const string FallbackVersion = "0.4.0";
+    public const string FallbackVersion = "0.5.0";
     public const string WindowsUpdateManifest = "https://api.kuaijian.jingronghao.com/updates/windows/latest.json";
 
     public static string CurrentVersion =>

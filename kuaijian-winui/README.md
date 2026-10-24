@@ -67,7 +67,7 @@ installer\KuaiJian-<版本号>-Windows-x64-Setup.exe
 
 仓库根目录的 `.github/workflows/windows-release.yml` 会在 `kuaijian-winui` 有新提交时，在 Windows Runner 上构建 x64 安装包并生成 `latest.json`。Windows 客户端读取公开的 `https://api.kuaijian.jingronghao.com/updates/windows/latest.json`；安装包可以放在官网的 `/downloads/` 目录，清单中的 `downloadURL` 指向对应安装包。设置页会校验 SHA-256 后下载并启动安装程序。
 
-发布新版本前，请先把 `installer.iss` 中的 `MyAppVersion` 从例如 `0.4.0` 改为 `0.4.1`，再提交到 `main`；也可以在 GitHub Actions 手动运行工作流并填写版本号。相同版本的 Release 不会被覆盖。
+发布新版本前，请先把 `installer.iss` 中的 `MyAppVersion` 从例如 `0.4.0` 改为新的三段版本号，再提交到 `main`；也可以在 GitHub Actions 手动运行工作流并填写版本号。相同版本的 Release 不会被覆盖。
 
 由于 `runtime-tools\yt-dlp.exe` 和 `runtime-tools\ffmpeg.exe` 不提交到仓库，GitHub Actions 自动构建的安装包默认只包含基础 HTTP/HTTPS 下载能力；需要多站点下载时，应在 Windows Runner 的构建前安全注入这两个已核验的运行时文件。
 
