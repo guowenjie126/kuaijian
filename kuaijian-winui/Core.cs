@@ -12,8 +12,8 @@ namespace KuaiJian.WinUI;
 
 public static class AppInfo
 {
-    public const string FallbackVersion = "0.5.0";
-    public const string WindowsUpdateManifest = "https://api.kuaijian.jingronghao.com/updates/windows/latest.json";
+    public const string FallbackVersion = "0.5.1";
+    public static readonly Uri WindowsUpdateManifest = CloudEndpoints.WindowsUpdateManifest;
 
     public static string CurrentVersion =>
         typeof(AppInfo).Assembly.GetName().Version?.ToString(3) ?? FallbackVersion;
@@ -366,7 +366,6 @@ public sealed class LocalDataStore
 
 public sealed class AuthService
 {
-    private const string ApiBaseUrl = "https://api.kuaijian.jingronghao.com";
     private const string VaultResource = "com.kuaijian.winui.auth";
     private const string VaultUser = "access-token";
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -625,7 +624,7 @@ public sealed class AuthService
 
     private async Task<T> RequestAsync<T>(HttpMethod method, string path, object? payload, string? token = null)
     {
-        using var request = new HttpRequestMessage(method, ApiBaseUrl + path);
+        using var request = new HttpRequestMessage(method, CloudEndpoints.Api(path));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (!string.IsNullOrWhiteSpace(token)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         if (payload is not null)
@@ -649,6 +648,9 @@ public sealed class AuthService
 
     private static string UserMessage(string code) => code switch
     {
+        "phone_not_registered" => "该手机号尚未注册，请先注册后再登录。",
+        "wrong_password" => "手机号或密码错误。",
+        "invalid_login_payload" => "登录信息不完整，请重新选择登录方式并填写对应内容。",
         "phone_already_registered" => "该手机号已经注册，请直接登录。",
         "email_already_registered" => "该邮箱已经绑定其他账号。",
         "invalid_credentials" => "手机号、验证码或密码错误。",
@@ -665,6 +667,7 @@ public sealed class AuthService
         "unauthorized" => "登录状态已失效，请重新登录。",
         "invalid_token" => "登录状态已失效，请重新登录。",
         "token_expired" => "登录状态已过期，请重新登录。",
+        "internal_error" => "云端服务暂时异常，请稍后重试。",
         _ => "云端操作失败，请稍后重试。"
     };
 
@@ -1019,11 +1022,9 @@ public sealed class CloudSyncService
             !string.IsNullOrWhiteSpace(item.ImagePath),
             !string.IsNullOrWhiteSpace(item.RtfPath),
             item.FileUrls?.Count ?? 0);
-    private const string BaseUrl = "https://api.kuaijian.jingronghao.com";
-
     public async Task<List<ClipboardItem>> PullAsync(string token)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, BaseUrl + "/v1/clipboard");
+        using var request = new HttpRequestMessage(HttpMethod.Get, CloudEndpoints.Api("/v1/clipboard"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         using var timeout = new CancellationTokenSource(_http.Timeout);
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
@@ -1047,7 +1048,7 @@ public sealed class CloudSyncService
 
     public async Task PushAsync(string token, IReadOnlyCollection<ClipboardItem> items)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Put, BaseUrl + "/v1/clipboard");
+        using var request = new HttpRequestMessage(HttpMethod.Put, CloudEndpoints.Api("/v1/clipboard"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var records = items.Where(IsSyncable).Take(ClipboardSyncPolicy.MaxRecords).ToList();
         if (records.Any(item => !ClipboardSyncPolicy.IsValidRecord(
