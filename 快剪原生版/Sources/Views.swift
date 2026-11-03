@@ -88,6 +88,7 @@ struct RootView: View {
                             Image(systemName: "chevron.right")
                                 .foregroundStyle(Color.kjMuted)
                                 .frame(width: 24, height: 48)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     } else {
@@ -217,6 +218,7 @@ private struct AuthModeButton: View {
             Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(selected ? .white : Color(red: 0.25, green: 0.32, blue: 0.42)).frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(selected ? AnyShapeStyle(LinearGradient(colors: [Color(red: 0.14, green: 0.53, blue: 0.97), Color(red: 0.34, green: 0.65, blue: 0.98)], startPoint: .leading, endPoint: .trailing)) : AnyShapeStyle(Color.clear))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
     }
@@ -287,6 +289,7 @@ private struct AuthMethodButton: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(selected ? Color.white : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 9))
+                .contentShape(RoundedRectangle(cornerRadius: 9))
         }
         .buttonStyle(.plain)
     }
@@ -363,14 +366,17 @@ private struct AuthSecondaryButton: View {
     let title: String
     let action: () -> Void
     var body: some View {
-        Button(title, action: action)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(Color(red: 0.14, green: 0.49, blue: 0.94))
-            .frame(width: 112, height: 46)
-            .background(Color.white.opacity(0.92))
-            .clipShape(RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color(red: 0.84, green: 0.88, blue: 0.93)))
-            .buttonStyle(.plain)
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color(red: 0.14, green: 0.49, blue: 0.94))
+                .frame(width: 112, height: 46)
+                .background(Color.white.opacity(0.92))
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+                .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color(red: 0.84, green: 0.88, blue: 0.93)))
+                .contentShape(RoundedRectangle(cornerRadius: 11))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -385,6 +391,7 @@ private struct AuthPrimaryButton: View {
                 .frame(width: 360, height: 48)
                 .background(LinearGradient(colors: [Color(red: 0.14, green: 0.53, blue: 0.97), Color(red: 0.39, green: 0.70, blue: 0.99)], startPoint: .leading, endPoint: .trailing))
                 .clipShape(RoundedRectangle(cornerRadius: 11))
+                .contentShape(RoundedRectangle(cornerRadius: 11))
         }
         .buttonStyle(.plain)
     }
@@ -424,8 +431,7 @@ struct SidebarView: View {
                         } label: {
                             ZStack {
                                 VStack(spacing: 5) {
-                                    Image(systemName: section.icon)
-                                        .font(.system(size: section == .calculator ? 21 : 18, weight: .medium))
+                                    SidebarIconView(resource: section.icon)
                                     Text(section.title)
                                         .font(.system(size: 11, weight: .medium))
                                 }
@@ -448,6 +454,7 @@ struct SidebarView: View {
                     .font(.system(size: 20))
                     .foregroundStyle(Color.kjMuted)
                     .frame(width: KJLayout.navItemWidth, height: 48)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .padding(.bottom, 12)
@@ -457,6 +464,28 @@ struct SidebarView: View {
         .simultaneousGesture(TapGesture(count: 2).onEnded {
             if model.doubleClickCollapseEnabled { model.isSidebarCollapsed = true }
         })
+    }
+}
+
+private struct SidebarIconView: View {
+    let resource: String
+
+    var body: some View {
+        Group {
+            if let path = Bundle.main.path(forResource: resource, ofType: "png", inDirectory: "sidebar-icons"),
+               let image = NSImage(contentsOfFile: path) {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .renderingMode(.template)
+                    .scaledToFit()
+            } else {
+                Image(systemName: "questionmark.square.dashed")
+                    .resizable()
+                    .scaledToFit()
+            }
+        }
+        .frame(width: 24, height: 24)
     }
 }
 
@@ -516,6 +545,7 @@ struct ActionButton: View {
             .background(filled ? Color.kjMint : Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 11))
             .overlay(!filled ? RoundedRectangle(cornerRadius: 11).stroke(Color.kjBorder, lineWidth: 1) : nil)
+            .contentShape(RoundedRectangle(cornerRadius: 11))
         }
         .buttonStyle(.plain)
     }
@@ -530,11 +560,18 @@ struct ClipboardPage: View {
     @State private var imageScale = 1.0
 
     private var filtered: [ClipboardItem] {
-        model.items.filter { item in
+        let matching = model.items.filter { item in
             let matchesFilter = filter == "全部" || (filter == "文本" && item.kind == .text) || (filter == "图片" && item.kind == .image) || (filter == "网址" && item.kind == .url)
             let matchesSearch = search.isEmpty || item.text.localizedCaseInsensitiveContains(search)
             return matchesFilter && matchesSearch
         }
+        return model.orderedClipboardItems(matching)
+    }
+
+    private var imageColumns: [GridItem] {
+        imageScale >= 1.4
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
     }
 
     var body: some View {
@@ -542,13 +579,16 @@ struct ClipboardPage: View {
             PageHeader(title: "我的剪贴板", subtitle: "")
             HStack(spacing: 8) {
                 ForEach(["全部", "文本", "图片", "网址"], id: \.self) { value in
-                    Button(value) { filter = value }
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(filter == value ? .white : Color.kjMuted)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 34)
-                        .background(filter == value ? Color.kjMint : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Button { filter = value } label: {
+                        Text(value)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(filter == value ? .white : Color.kjMuted)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 34)
+                            .background(filter == value ? Color.kjMint : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .contentShape(RoundedRectangle(cornerRadius: 10))
+                    }
                         .buttonStyle(.plain)
                 }
             }
@@ -589,7 +629,7 @@ struct ClipboardPage: View {
                 if filtered.isEmpty {
                     EmptyState(title: "还没有剪贴板内容", message: "复制内容后会自动出现在这里")
                 } else if filter == "图片" {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+                    LazyVGrid(columns: imageColumns, spacing: 14) {
                         ForEach(filtered) { item in ClipboardImageTile(item: item, imageScale: imageScale) }
                     }
                 } else {
@@ -611,6 +651,13 @@ private struct ClipboardImageTile: View {
     let imageScale: Double
     @State private var showingImagePreview = false
 
+    private var tileHeight: CGFloat {
+        if imageScale >= 1.4 {
+            return min(420, max(300, 260 * imageScale))
+        }
+        return max(112, min(210, 132 * imageScale))
+    }
+
     var body: some View {
         Group {
             if let path = item.imagePath, let image = NSImage(contentsOfFile: path) {
@@ -618,7 +665,6 @@ private struct ClipboardImageTile: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(10)
             } else {
                 Image(systemName: "photo")
                     .font(.system(size: 28))
@@ -626,10 +672,7 @@ private struct ClipboardImageTile: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: max(112, min(210, 132 * imageScale)))
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.kjBorder, lineWidth: 1))
+        .frame(height: tileHeight)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { model.copy(item) }
         .onTapGesture(count: 1) { showingImagePreview = true }
@@ -637,6 +680,7 @@ private struct ClipboardImageTile: View {
             Button("复制图片") { model.copy(item) }
             Button("打开大图") { showingImagePreview = true }
             Button(item.favorite ? "取消收藏" : "收藏") { model.toggleFavorite(item) }
+            Button(item.pinned ? "取消置顶" : "置顶") { model.togglePinned(item) }
             Button("删除", role: .destructive) { model.delete(item) }
         }
         .sheet(isPresented: $showingImagePreview) {
@@ -683,6 +727,7 @@ struct ClipboardRow: View {
         .contextMenu {
             Button("复制内容") { model.copy(item) }
             Button(item.favorite ? "取消收藏" : "收藏") { model.toggleFavorite(item) }
+            Button(item.pinned ? "取消置顶" : "置顶") { model.togglePinned(item) }
             Button("删除", role: .destructive) { model.delete(item) }
         }
     }
@@ -777,6 +822,7 @@ struct QuestionAnswersPage: View {
                     Image(systemName: "arrow.right")
                         .font(.system(size: 20, weight: .semibold))
                         .frame(width: 46, height: 46)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.kjMint)
@@ -865,6 +911,7 @@ private struct QAIconButton: View {
                 .background(filled ? Color.kjMint : Color.white)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(!filled ? RoundedRectangle(cornerRadius: 10).stroke(Color.kjBorder, lineWidth: 1) : nil)
+                .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
         .help(title)
@@ -917,6 +964,7 @@ struct AnswerCard: View {
                 Button { model.copyAnswer() } label: {
                     Label("复制答案", systemImage: "doc.on.doc")
                         .frame(width: 112, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.bordered)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -925,6 +973,7 @@ struct AnswerCard: View {
                 Button { model.fillAnswerToTarget() } label: {
                     Label("填充到目标软件", systemImage: "arrow.right")
                         .frame(width: 168, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.kjMint)
@@ -1088,7 +1137,15 @@ struct TranslationPage: View {
                     Text("原文语种")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.kjMuted)
-                    Picker("", selection: $model.translationSourceLanguage) {
+                    Picker("", selection: Binding(
+                        get: {
+                            if model.translationSourceLanguage == .auto && !model.translationInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                return model.translationDetectedSource
+                            }
+                            return model.translationSourceLanguage
+                        },
+                        set: { model.translationSourceLanguage = $0 }
+                    )) {
                         ForEach(TranslationLanguage.allCases) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.menu)
@@ -1102,7 +1159,15 @@ struct TranslationPage: View {
                     Text("译文语种")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.kjMuted)
-                    Picker("", selection: $model.translationTargetLanguage) {
+                    Picker("", selection: Binding(
+                        get: {
+                            if model.translationTargetLanguage == .auto && !model.translationInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                return model.translationResolvedTarget
+                            }
+                            return model.translationTargetLanguage
+                        },
+                        set: { model.translationTargetLanguage = $0 }
+                    )) {
                         ForEach(TranslationLanguage.allCases) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.menu)
@@ -1119,6 +1184,7 @@ struct TranslationPage: View {
                 Button { model.readClipboardForTranslation() } label: {
                     Label("读取剪贴板", systemImage: "doc.on.clipboard")
                         .frame(height: 36)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.bordered)
                 .help("读取剪贴板")
@@ -1126,6 +1192,7 @@ struct TranslationPage: View {
                 Button { model.translate() } label: {
                     Label("翻译", systemImage: "character.bubble")
                         .frame(height: 36)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.kjMint)
@@ -1137,7 +1204,9 @@ struct TranslationPage: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color.kjInk)
             TextEditor(text: $model.translationInput)
-                .frame(minHeight: 170)
+                .font(.system(size: 14))
+                .scrollContentBackground(.hidden)
+                .frame(height: 220)
                 .padding(8)
                 .background(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -1148,7 +1217,9 @@ struct TranslationPage: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color.kjInk)
             TextEditor(text: $model.translationOutput)
-                .frame(minHeight: 170)
+                .font(.system(size: 14))
+                .scrollContentBackground(.hidden)
+                .frame(height: 220)
                 .padding(8)
                 .background(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -1189,14 +1260,17 @@ struct CalculatorPage: View {
                     .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.kjBorder, lineWidth: 1))
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
                     ForEach(keys.flatMap { $0 }, id: \.self) { key in
-                        Button(key) { model.calculatorInput(key) }
-                            .font(.system(size: 20, weight: .semibold))
-                            .frame(maxWidth: .infinity, minHeight: 48)
-                            .background(["÷", "×", "-", "+"].contains(key) ? Color.kjMint : key == "=" ? Color(red: 0.02, green: 0.45, blue: 0.34) : Color.kjMintSoft)
-                            .foregroundStyle(["÷", "×", "-", "+", "="].contains(key) ? .white : Color.kjInk)
-                            .clipShape(RoundedRectangle(cornerRadius: 13))
-                            .buttonStyle(.plain)
-                            .help("计算器按键 \(key)")
+                        Button { model.calculatorInput(key) } label: {
+                            Text(key)
+                                .font(.system(size: 20, weight: .semibold))
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                                .background(["÷", "×", "-", "+"].contains(key) ? Color.kjMint : key == "=" ? Color(red: 0.02, green: 0.45, blue: 0.34) : Color.kjMintSoft)
+                                .foregroundStyle(["÷", "×", "-", "+", "="].contains(key) ? .white : Color.kjInk)
+                                .clipShape(RoundedRectangle(cornerRadius: 13))
+                                .contentShape(RoundedRectangle(cornerRadius: 13))
+                        }
+                        .buttonStyle(.plain)
+                        .help("计算器按键 \(key)")
                     }
                 }
             }
@@ -1342,7 +1416,7 @@ struct FavoritesPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             PageHeader(title: "收藏", subtitle: "快速访问收藏的剪贴板内容")
-            ScrollView { LazyVStack(spacing: 8) { ForEach(model.items.filter(\.favorite)) { ClipboardRow(item: $0) } } }
+            ScrollView { LazyVStack(spacing: 8) { ForEach(model.orderedClipboardItems(model.items.filter(\.favorite))) { ClipboardRow(item: $0) } } }
         }.padding(28)
     }
 }
@@ -1453,6 +1527,30 @@ struct ShortcutSettings: View {
             }
             Text("快捷入口的组合键会在快捷页面中保存，并在快剪运行时生效。建议使用包含 ⌥ 或 ⌃ 的组合键，避免和系统截图冲突。")
                 .font(.system(size: 13)).foregroundStyle(Color.kjMuted)
+            Divider()
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("快速显示到桌面").font(.system(size: 16, weight: .semibold))
+                    Text("双击 \(model.showDesktopShortcutModifierTitle) 键，快速显示并激活快剪窗口")
+                        .font(.system(size: 13)).foregroundStyle(Color.kjMuted)
+                }
+                Spacer()
+                Button(model.isRecordingShowDesktopShortcut ? "正在录制…" : model.showDesktopShortcutTitle) {
+                    model.beginShowDesktopShortcutRecording()
+                }
+                .buttonStyle(.bordered)
+                .help("点击后连续按两次同一个修饰键来修改")
+                Button("恢复默认") { model.resetShowDesktopShortcut() }
+                    .buttonStyle(.bordered)
+                Toggle("启用快速显示到桌面快捷键", isOn: $model.showDesktopShortcutEnabled)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+            if model.isRecordingShowDesktopShortcut {
+                Text(model.showDesktopShortcutRecordingMessage)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.kjMint)
+            }
             Spacer()
         }
     }

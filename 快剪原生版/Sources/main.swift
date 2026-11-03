@@ -31,16 +31,16 @@ enum SidebarSection: String, CaseIterable, Identifiable {
     }
     var icon: String {
         switch self {
-        case .clipboard: return "doc.on.clipboard"
-        case .team: return "person.3.fill"
-        case .qa: return "questionmark.bubble"
-        case .calculator: return "calculator"
-        case .downloads: return "arrow.down.circle.fill"
-        case .shortcuts: return "command"
-        case .translation: return "character.bubble"
-        case .connections: return "link"
-        case .transfer: return "arrow.triangle.2.circlepath"
-        case .favorites: return "star.fill"
+        case .clipboard: return "sidebar-icon-01"
+        case .team: return "sidebar-icon-02"
+        case .qa: return "sidebar-icon-03"
+        case .calculator: return "sidebar-icon-04"
+        case .downloads: return "sidebar-icon-05"
+        case .shortcuts: return "sidebar-icon-06"
+        case .translation: return "sidebar-icon-07"
+        case .connections: return "sidebar-icon-08"
+        case .transfer: return "sidebar-icon-09"
+        case .favorites: return "sidebar-icon-10"
         }
     }
 }
@@ -379,6 +379,10 @@ final class AppModel: ObservableObject {
     @Published var saveURLs = true { didSet { UserDefaults.standard.set(saveURLs, forKey: "captureURLs") } }
     @Published var saveRichText = true { didSet { UserDefaults.standard.set(saveRichText, forKey: "captureRichText") } }
     @Published var screenshotShortcut = "⇧⌘4" { didSet { UserDefaults.standard.set(screenshotShortcut, forKey: "screenshotShortcut") } }
+    @Published var showDesktopShortcutEnabled = true { didSet { UserDefaults.standard.set(showDesktopShortcutEnabled, forKey: "showDesktopShortcutEnabled") } }
+    @Published var showDesktopShortcutModifier = "command" { didSet { UserDefaults.standard.set(showDesktopShortcutModifier, forKey: "showDesktopShortcutModifier") } }
+    @Published var isRecordingShowDesktopShortcut = false
+    @Published var showDesktopShortcutRecordingMessage = ""
     @Published var doubleClickCollapseEnabled = true { didSet { UserDefaults.standard.set(doubleClickCollapseEnabled, forKey: "doubleClickCollapseEnabled") } }
     @Published var alwaysOnTop = false { didSet { UserDefaults.standard.set(alwaysOnTop, forKey: "alwaysOnTop"); applyWindowPreferences() } }
     @Published var launchAtLogin = false { didSet { UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin") } }
@@ -412,6 +416,10 @@ final class AppModel: ObservableObject {
     private var copyFeedbackTask: Task<Void, Never>?
     private var globalMonitor: Any?
     private var localKeyboardMonitor: Any?
+    private var localShortcutMonitor: Any?
+    private var shortcutRecordingMonitor: Any?
+    private var lastDesktopModifierTapAt = Date.distantPast
+    private var lastRecordedModifier: String?
 
     private var appSupport: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -444,6 +452,8 @@ final class AppModel: ObservableObject {
         saveURLs = UserDefaults.standard.object(forKey: "captureURLs") as? Bool ?? true
         saveRichText = UserDefaults.standard.object(forKey: "captureRichText") as? Bool ?? (UserDefaults.standard.object(forKey: "captureImages") != nil ? true : true)
         screenshotShortcut = UserDefaults.standard.string(forKey: "screenshotShortcut") ?? "⇧⌘4"
+        showDesktopShortcutEnabled = UserDefaults.standard.object(forKey: "showDesktopShortcutEnabled") as? Bool ?? true
+        showDesktopShortcutModifier = UserDefaults.standard.string(forKey: "showDesktopShortcutModifier") ?? "command"
         doubleClickCollapseEnabled = UserDefaults.standard.object(forKey: "doubleClickCollapseEnabled") as? Bool ?? true
         alwaysOnTop = UserDefaults.standard.object(forKey: "alwaysOnTop") as? Bool ?? false
         launchAtLogin = UserDefaults.standard.object(forKey: "launchAtLogin") as? Bool ?? false
@@ -466,6 +476,7 @@ final class AppModel: ObservableObject {
         migrateLegacyShortcutsIfNeeded()
         installPasteboardMonitor()
         installGlobalShortcutMonitor()
+        installLocalShortcutMonitor()
         installCalculatorKeyboardMonitor()
         DispatchQueue.main.async { self.applyWindowPreferences() }
     }
@@ -475,6 +486,8 @@ final class AppModel: ObservableObject {
         copyFeedbackTask?.cancel()
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
         if let localKeyboardMonitor { NSEvent.removeMonitor(localKeyboardMonitor) }
+        if let localShortcutMonitor { NSEvent.removeMonitor(localShortcutMonitor) }
+        if let shortcutRecordingMonitor { NSEvent.removeMonitor(shortcutRecordingMonitor) }
     }
 
     func load() {
@@ -638,6 +651,23 @@ final class AppModel: ObservableObject {
         save()
     }
 
+    func togglePinned(_ item: ClipboardItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].pinned.toggle()
+        save()
+    }
+
+    func orderedClipboardItems(_ source: [ClipboardItem]) -> [ClipboardItem] {
+        source.enumerated()
+            .sorted {
+                if $0.element.pinned != $1.element.pinned {
+                    return $0.element.pinned && !$1.element.pinned
+                }
+                return $0.offset < $1.offset
+            }
+            .map(\.element)
+    }
+
     func delete(_ item: ClipboardItem) {
         items.removeAll { $0.id == item.id }
         save()
@@ -768,7 +798,7 @@ final class AppModel: ObservableObject {
         guard source != target else { return text }
         let dictionary: [String: String]
         if source == .chinese && target == .english {
-            dictionary = ["你好": "Hello", "谢谢": "Thank you", "退款": "refund", "订单": "order", "客户": "customer", "价格": "price", "怎么申请退款": "How do I request a refund?", "体重过轻": "Underweight", "体重超重": "Overweight"]
+            dictionary = ["你好": "Hello", "谢谢": "Thank you", "退款": "Refund", "订单": "Order", "客户": "Customer", "价格": "Price", "怎么申请退款": "How do I request a refund?", "体重过轻": "Underweight", "体重超重": "Overweight", "计算机图标": "Calculator icon", "计算机": "Calculator", "图标": "Icon"]
         } else if source == .english && target == .chinese {
             dictionary = ["hello": "你好", "thank you": "谢谢", "refund": "退款", "order": "订单", "customer": "客户", "price": "价格", "how do i request a refund?": "怎么申请退款？", "underweight": "体重过轻", "overweight": "体重超重"]
         } else {
@@ -906,6 +936,124 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func showAppOnDesktop() {
+        isSidebarCollapsed = false
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        for window in NSApp.windows where window.canBecomeMain || window.title == "快剪" {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    func toggleAppOnDesktop() {
+        let appWindows = NSApp.windows.filter { $0.canBecomeMain || $0.title == "快剪" }
+        if NSApp.isActive,
+           let visibleWindow = appWindows.first(where: { $0.isVisible && !$0.isMiniaturized }) {
+            visibleWindow.miniaturize(nil)
+            return
+        }
+        showAppOnDesktop()
+    }
+
+    var showDesktopShortcutTitle: String {
+        "双击 \(showDesktopShortcutModifierTitle)"
+    }
+
+    var showDesktopShortcutModifierTitle: String {
+        showDesktopShortcutModifierTitle(for: showDesktopShortcutModifier)
+    }
+
+    func beginShowDesktopShortcutRecording() {
+        if isRecordingShowDesktopShortcut {
+            cancelShowDesktopShortcutRecording()
+            return
+        }
+        isRecordingShowDesktopShortcut = true
+        lastRecordedModifier = nil
+        lastDesktopModifierTapAt = .distantPast
+        showDesktopShortcutRecordingMessage = "请连续按两次同一个修饰键"
+        shortcutRecordingMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            guard let self else { return event }
+            if self.isRecordingShowDesktopShortcut {
+                self.handleShowDesktopShortcutRecording(event)
+                return nil
+            }
+            return event
+        }
+    }
+
+    func cancelShowDesktopShortcutRecording() {
+        if let shortcutRecordingMonitor { NSEvent.removeMonitor(shortcutRecordingMonitor) }
+        shortcutRecordingMonitor = nil
+        isRecordingShowDesktopShortcut = false
+        lastRecordedModifier = nil
+        lastDesktopModifierTapAt = .distantPast
+        showDesktopShortcutRecordingMessage = ""
+    }
+
+    func resetShowDesktopShortcut() {
+        cancelShowDesktopShortcutRecording()
+        showDesktopShortcutModifier = "command"
+    }
+
+    private func handleShowDesktopShortcutRecording(_ event: NSEvent) {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard let modifier = desktopModifier(for: event.keyCode),
+              flags.contains(desktopModifierFlags(for: modifier)) else {
+            return
+        }
+        guard !event.isARepeat else {
+            showDesktopShortcutRecordingMessage = "请按 Command、Option、Control 或 Shift 键"
+            return
+        }
+        let now = Date()
+        if modifier == lastRecordedModifier && now.timeIntervalSince(lastDesktopModifierTapAt) <= 0.5 {
+            showDesktopShortcutModifier = modifier
+            cancelShowDesktopShortcutRecording()
+            settingsMessage = "快速显示到桌面的快捷键已更新为 \(showDesktopShortcutTitle)"
+        } else {
+            lastRecordedModifier = modifier
+            lastDesktopModifierTapAt = now
+            showDesktopShortcutRecordingMessage = "已记录一次，再按一次 \(showDesktopShortcutModifierTitle(for: modifier))"
+        }
+    }
+
+    private func desktopModifier(for keyCode: UInt16) -> String? {
+        switch keyCode {
+        case 54, 55: return "command"
+        case 58, 61: return "option"
+        case 59, 62: return "control"
+        case 56, 60: return "shift"
+        default: return nil
+        }
+    }
+
+    private func showDesktopShortcutModifierTitle(for modifier: String) -> String {
+        switch modifier {
+        case "option": return "Option ⌥"
+        case "control": return "Control ⌃"
+        case "shift": return "Shift ⇧"
+        default: return "Command ⌘"
+        }
+    }
+
+    private func desktopModifierFlags(for modifier: String) -> NSEvent.ModifierFlags {
+        switch modifier {
+        case "option": return .option
+        case "control": return .control
+        case "shift": return .shift
+        default: return .command
+        }
+    }
+
+    private func configuredDesktopModifierFlags() -> NSEvent.ModifierFlags {
+        desktopModifierFlags(for: showDesktopShortcutModifier)
+    }
+
     func openSystemSettings(_ path: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(path)") {
             NSWorkspace.shared.open(url)
@@ -920,21 +1068,59 @@ final class AppModel: ObservableObject {
     }
 
     private func installGlobalShortcutMonitor() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let isScreenshot = flags.contains(.command) && flags.contains(.shift) && event.charactersIgnoringModifiers == "4"
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                if isScreenshot { self.takeSystemScreenshot(); return }
-                guard flags.contains(.command) || flags.contains(.option) || flags.contains(.control) || flags.contains(.shift) else { return }
-                let key = event.charactersIgnoringModifiers?.uppercased() ?? ""
-                if self.hotkeyMatches(self.screenshotShortcut, key: key, flags: flags) {
-                    self.takeSystemScreenshot(); return
-                }
-                if let item = self.shortcuts.first(where: { $0.enabled && self.hotkeyMatches($0.hotkey, key: key, flags: flags) }) {
-                    self.openShortcut(item)
-                }
+                self?.handleGlobalShortcutEvent(event)
             }
+        }
+    }
+
+    private func installLocalShortcutMonitor() {
+        localShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            Task { @MainActor [weak self] in
+                self?.handleGlobalShortcutEvent(event)
+            }
+            return event
+        }
+    }
+
+    private func handleGlobalShortcutEvent(_ event: NSEvent) {
+        if isRecordingShowDesktopShortcut { return }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isDesktopModifierKey = desktopModifier(for: event.keyCode) == showDesktopShortcutModifier
+        let configuredModifier = configuredDesktopModifierFlags()
+        let allStandardModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+        let hasOnlyConfiguredModifier = flags.contains(configuredModifier)
+            && flags.subtracting(configuredModifier).intersection(allStandardModifiers).isEmpty
+
+        if showDesktopShortcutEnabled && event.type == .flagsChanged && isDesktopModifierKey
+            && flags.contains(configuredModifier) && hasOnlyConfiguredModifier {
+            let now = Date()
+            if now.timeIntervalSince(lastDesktopModifierTapAt) <= 0.4 {
+                lastDesktopModifierTapAt = .distantPast
+                toggleAppOnDesktop()
+            } else {
+                lastDesktopModifierTapAt = now
+            }
+            return
+        }
+
+        if event.type == .flagsChanged { return }
+
+        // Do not let a modifier-plus-key shortcut count as a double modifier tap.
+        if !isDesktopModifierKey && !flags.intersection(allStandardModifiers).isEmpty {
+            lastDesktopModifierTapAt = .distantPast
+        }
+
+        let isScreenshot = flags.contains(.command) && flags.contains(.shift) && event.charactersIgnoringModifiers == "4"
+        if isScreenshot { takeSystemScreenshot(); return }
+        guard flags.contains(.command) || flags.contains(.option) || flags.contains(.control) || flags.contains(.shift) else { return }
+        let key = event.charactersIgnoringModifiers?.uppercased() ?? ""
+        if hotkeyMatches(screenshotShortcut, key: key, flags: flags) {
+            takeSystemScreenshot(); return
+        }
+        if let item = shortcuts.first(where: { $0.enabled && hotkeyMatches($0.hotkey, key: key, flags: flags) }) {
+            openShortcut(item)
         }
     }
 
