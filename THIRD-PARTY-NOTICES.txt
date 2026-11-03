@@ -1,0 +1,15 @@
+Runtime components bundled with KuaiJian Windows x64
+
+yt-dlp
+  Version: 2026.08.19
+  Project: https://github.com/yt-dlp/yt-dlp
+  License: The Unlicense (see the upstream project for source and notices)
+  SHA-256: 66674953FE251B89F4D08C5F0E35E0728679BD67AB3D7D05C0562AF101DD3E7A
+
+FFmpeg Essentials
+  Version: 9.0.2
+  Build source: https://www.gyan.dev/ffmpeg/builds/
+  License: GPLv3; source and build information are provided by the upstream project.
+  SHA-256: 3256173F3F8BFFD7DF12227C68ADF68025EDB1832273A9530688A7BB1ED8EDEC
+
+The bundled binaries are optional runtime tools used by the download feature.
