@@ -1,9 +1,9 @@
 #define MyAppName "快剪"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.5.1"
+  #define MyAppVersion "0.5.2"
 #endif
 #ifndef MyAppOutputBaseFilename
-  #define MyAppOutputBaseFilename "KuaiJian-0.5.1-Windows-x64-Setup"
+  #define MyAppOutputBaseFilename "KuaiJian-0.5.2-Windows-x64-Setup"
 #endif
 #define MyAppPublisher "泾融號"
 #define MyAppExeName "KuaiJian.WinUI.exe"

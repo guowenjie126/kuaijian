@@ -12,7 +12,7 @@ namespace KuaiJian.WinUI;
 
 public static class AppInfo
 {
-    public const string FallbackVersion = "0.5.1";
+    public const string FallbackVersion = "0.5.2";
     public static readonly Uri WindowsUpdateManifest = CloudEndpoints.WindowsUpdateManifest;
 
     public static string CurrentVersion =>
