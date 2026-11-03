@@ -139,7 +139,7 @@ public sealed class RootPage : Page
             DownloadBrowser = NormalizeDownloadBrowser(configuredBrowser);
             if (!string.Equals(configuredBrowser, DownloadBrowser, StringComparison.Ordinal))
                 SetSetting("downloadBrowser", DownloadBrowser);
-            var hotkeyEnabled = GetBoolSetting("globalHotkeyEnabled", false);
+            var hotkeyEnabled = GetBoolSetting("globalHotkeyEnabled", true);
             var hotkeyRegistered = Window.ConfigureShell(
                 GetBoolSetting("startupEnabled", false),
                 hotkeyEnabled);

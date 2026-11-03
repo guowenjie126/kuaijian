@@ -5,15 +5,14 @@ namespace KuaiJian.WinUI;
 
 /// <summary>
 /// Windows-only shell integration for the unpackaged desktop build.
-/// It owns a message-only window so the tray icon and RegisterHotKey do not
-/// depend on WinUI's internal window procedure.
+/// It owns a message-only window for the tray icon and a low-level keyboard
+/// hook for the platform double-Alt show-window shortcut.
 /// </summary>
 public sealed class WindowsShellService : IDisposable
 {
     private const int WmApp = 0x8000;
     private const int TrayCallbackMessage = WmApp + 41;
     public const uint ActivateExistingInstanceMessage = WmApp + 42;
-    private const int WmHotKey = 0x0312;
     private const int WmLButtonUp = 0x0202;
     private const int WmRButtonUp = 0x0205;
     private const int NifMessage = 0x00000001;
@@ -27,10 +26,12 @@ public sealed class WindowsShellService : IDisposable
     private const int TpmReturnCommand = 0x0100;
     private const int MenuOpen = 1001;
     private const int MenuExit = 1002;
-    private const int GlobalHotkeyId = 9001;
-    private const uint ModControl = 0x0002;
-    private const uint ModShift = 0x0004;
-    private const uint VkV = 0x56;
+    private const int WhKeyboardLl = 13;
+    private const int WmKeyDown = 0x0100;
+    private const int WmSysKeyDown = 0x0104;
+    private const uint VkMenu = 0x12;
+    private const uint LlkhfInjected = 0x00000010;
+    private const long DoubleTapWindowMilliseconds = 400;
     private const int SwRestore = 9;
     private const int HwndMessage = -3;
     private const uint IconId = 1;
@@ -40,10 +41,12 @@ public sealed class WindowsShellService : IDisposable
     private const string ActivationEventName = "Local\\KuaiJian.WinUI.ActivateExistingInstance";
 
     private static readonly WndProcDelegate WindowProcDelegate = WindowProc;
+    private static readonly LowLevelKeyboardProc KeyboardHookDelegate = KeyboardHookCallback;
     private static readonly object SyncRoot = new();
     private static readonly Dictionary<IntPtr, WindowsShellService> Instances = new();
     private static readonly string WindowClassName = "KuaiJian.WindowsShellMessageWindow";
     private static bool _classRegistered;
+    private static WindowsShellService? _keyboardHookOwner;
 
     private readonly Action _showWindow;
     private readonly Action _exitApplication;
@@ -53,7 +56,9 @@ public sealed class WindowsShellService : IDisposable
     private readonly CancellationTokenSource _activationStop = new();
     private readonly Task _activationTask;
     private readonly bool _ownsIcon;
-    private bool _hotkeyRegistered;
+    private IntPtr _keyboardHook;
+    private long _lastAltTapAt;
+    private bool _globalHotkeyEnabled;
     private bool _disposed;
 
     public WindowsShellService(IntPtr mainWindow, Action showWindow, Action exitApplication)
@@ -109,16 +114,34 @@ public sealed class WindowsShellService : IDisposable
     public bool SetGlobalHotkey(bool enabled)
     {
         if (_disposed) return false;
+        _globalHotkeyEnabled = enabled;
         if (!enabled)
         {
-            if (_hotkeyRegistered) UnregisterHotKey(_messageWindow, GlobalHotkeyId);
-            _hotkeyRegistered = false;
+            RemoveKeyboardHook();
             return true;
         }
 
-        if (_hotkeyRegistered) return true;
-        _hotkeyRegistered = RegisterHotKey(_messageWindow, GlobalHotkeyId, ModControl | ModShift, VkV);
-        return _hotkeyRegistered;
+        if (_keyboardHook != IntPtr.Zero) return true;
+        _keyboardHookOwner = this;
+        _keyboardHook = SetWindowsHookEx(WhKeyboardLl, KeyboardHookDelegate, GetModuleHandle(null), 0);
+        if (_keyboardHook == IntPtr.Zero)
+        {
+            _keyboardHookOwner = null;
+            _globalHotkeyEnabled = false;
+            return false;
+        }
+        return true;
+    }
+
+    private void RemoveKeyboardHook()
+    {
+        if (_keyboardHook != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_keyboardHook);
+            _keyboardHook = IntPtr.Zero;
+        }
+        if (ReferenceEquals(_keyboardHookOwner, this)) _keyboardHookOwner = null;
+        _lastAltTapAt = 0;
     }
 
     public static bool IsStartupEnabled()
@@ -216,11 +239,6 @@ public sealed class WindowsShellService : IDisposable
             return;
         }
 
-        if (windowsMessage == WmHotKey)
-        {
-            if (wParam.ToInt32() == GlobalHotkeyId) _showWindow();
-            return;
-        }
         var message = unchecked((int)lParam.ToInt64());
         if (message == WmLButtonUp)
         {
@@ -273,7 +291,6 @@ public sealed class WindowsShellService : IDisposable
             if (Instances.TryGetValue(hwnd, out var instance))
             {
                 if (message == (uint)TrayCallbackMessage
-                    || message == WmHotKey
                     || message == ActivateExistingInstanceMessage)
                     instance.HandleMessage(message, wParam, lParam);
             }
@@ -286,6 +303,9 @@ public sealed class WindowsShellService : IDisposable
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     private delegate IntPtr WndProcDelegate(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WNDCLASSEX
@@ -326,6 +346,49 @@ public sealed class WindowsShellService : IDisposable
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT { public int X; public int Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KBDLLHOOKSTRUCT
+    {
+        public uint vkCode;
+        public uint scanCode;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0
+            && _keyboardHookOwner is { } owner
+            && owner._globalHotkeyEnabled
+            && (wParam == (IntPtr)WmKeyDown || wParam == (IntPtr)WmSysKeyDown))
+        {
+            var keyboard = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+            if ((keyboard.flags & LlkhfInjected) == 0)
+            {
+                if (keyboard.vkCode == VkMenu)
+                {
+                    var now = Environment.TickCount64;
+                    if (owner._lastAltTapAt > 0 && now - owner._lastAltTapAt <= DoubleTapWindowMilliseconds)
+                    {
+                        owner._lastAltTapAt = 0;
+                        owner._showWindow();
+                    }
+                    else
+                    {
+                        owner._lastAltTapAt = now;
+                    }
+                }
+                else
+                {
+                    // Alt+Tab, Alt+F4 and other Alt combinations are not a double tap.
+                    owner._lastAltTapAt = 0;
+                }
+            }
+        }
+        return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr CreateWindowEx(uint exStyle, string className, string windowName, uint style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
@@ -378,9 +441,13 @@ public sealed class WindowsShellService : IDisposable
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hwnd);
 
-    [DllImport("user32.dll")]
-    private static extern bool RegisterHotKey(IntPtr hwnd, int id, uint modifiers, uint virtualKey);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int hookType, LowLevelKeyboardProc callback, IntPtr moduleHandle, uint threadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hook);
 
     [DllImport("user32.dll")]
-    private static extern bool UnregisterHotKey(IntPtr hwnd, int id);
+    private static extern IntPtr CallNextHookEx(IntPtr hook, int nCode, IntPtr wParam, IntPtr lParam);
 }

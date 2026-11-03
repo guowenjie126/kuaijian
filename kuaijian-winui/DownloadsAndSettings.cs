@@ -444,6 +444,7 @@ public sealed class SettingsPage : Page
             case "账号": Account(); break;
             case "保存": Save(); break;
             case "下载": Download(); break;
+            case "快捷键": Shortcut(); break;
             case "隐藏": Hidden(); break;
             case "更新": Update(); break;
         }
@@ -656,6 +657,31 @@ public sealed class SettingsPage : Page
         });
     }
 
+    private void Shortcut()
+    {
+        _content.Children.Add(new TextBlock { Text = "快捷键", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        var hotkey = new ToggleSwitch { Header = "快速显示到桌面（双击 Alt）", IsOn = _root.GetBoolSetting("globalHotkeyEnabled", true) };
+        var changingHotkey = false;
+        hotkey.Toggled += (_, _) =>
+        {
+            if (changingHotkey) return;
+            if (hotkey.IsOn && !_root.Window.SetGlobalHotkey(true))
+            {
+                changingHotkey = true;
+                hotkey.IsOn = false;
+                changingHotkey = false;
+                _status.Text = "双击 Alt 快捷键启用失败，请检查系统权限后重试。";
+            }
+            else
+            {
+                _root.SetSetting("globalHotkeyEnabled", hotkey.IsOn);
+                if (!hotkey.IsOn) _root.Window.SetGlobalHotkey(false);
+            }
+        };
+        _content.Children.Add(hotkey);
+        _content.Children.Add(new TextBlock { Text = "Windows 默认使用双击 Alt；按两次 Alt 会显示并激活快剪窗口。使用 Alt+Tab、Alt+F4 等组合键不会触发。", TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = (Brush)Application.Current.Resources["MutedBrush"] });
+    }
+
     private void Hidden()
     {
         _content.Children.Add(new TextBlock { Text = "隐藏", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
@@ -677,25 +703,6 @@ public sealed class SettingsPage : Page
         };
         _content.Children.Add(startup);
         AddToggle("点击关闭按钮时最小化到系统托盘", "closeToTrayEnabled", false);
-        var hotkey = new ToggleSwitch { Header = "全局快捷键 Ctrl+Shift+V（显示快剪）", IsOn = _root.GetBoolSetting("globalHotkeyEnabled", false) };
-        var changingHotkey = false;
-        hotkey.Toggled += (_, _) =>
-        {
-            if (changingHotkey) return;
-            if (hotkey.IsOn && !_root.Window.SetGlobalHotkey(true))
-            {
-                changingHotkey = true;
-                hotkey.IsOn = false;
-                changingHotkey = false;
-                _status.Text = "全局快捷键注册失败，可能已被其他程序占用。";
-            }
-            else
-            {
-                _root.SetSetting("globalHotkeyEnabled", hotkey.IsOn);
-                if (!hotkey.IsOn) _root.Window.SetGlobalHotkey(false);
-            }
-        };
-        _content.Children.Add(hotkey);
         _content.Children.Add(new TextBlock { Text = "收缩后双击右侧图标栏恢复原位置和大小；启用关闭到托盘后，关闭按钮只隐藏窗口，选择托盘菜单中的“退出”才会结束程序。", TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = (Brush)Application.Current.Resources["MutedBrush"] });
     }
 
