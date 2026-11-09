@@ -31,6 +31,10 @@ TARGET="$(uname -m)-apple-macos13.0"
 
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 
+if [[ -d "$ROOT/Resources/sidebar-icons" ]]; then
+  cp -R "$ROOT/Resources/sidebar-icons" "$RES/"
+fi
+
 # 复用正式版已有的应用图标，登录/注册页与 Dock 图标保持一致。
 if [[ -f "/Applications/快剪.app/Contents/Resources/快剪.icns" ]]; then
   cp "/Applications/快剪.app/Contents/Resources/快剪.icns" "$RES/快剪.icns"
