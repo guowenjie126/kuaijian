@@ -92,12 +92,13 @@ struct ClipboardItem: Identifiable, Codable {
     var createdAt: Date
     var fileURLs: [String]
     var imagePath: String?
+    var imageDataBase64: String?
     var richTextBase64: String?
 
     init(id: UUID = UUID(), title: String, text: String, kind: ClipKind = .text,
          favorite: Bool = false, pinned: Bool = false, source: String = "来源未知",
          note: String = "", createdAt: Date = Date(), fileURLs: [String] = [],
-         imagePath: String? = nil, richTextBase64: String? = nil) {
+         imagePath: String? = nil, imageDataBase64: String? = nil, richTextBase64: String? = nil) {
         self.id = id
         self.title = title
         self.text = text
@@ -109,11 +110,12 @@ struct ClipboardItem: Identifiable, Codable {
         self.createdAt = createdAt
         self.fileURLs = fileURLs
         self.imagePath = imagePath
+        self.imageDataBase64 = imageDataBase64
         self.richTextBase64 = richTextBase64
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, text, kind, favorite, pinned, source, note, createdAt, fileURLs, imagePath, richTextBase64
+        case id, title, text, kind, favorite, pinned, source, note, createdAt, fileURLs, imagePath, imageDataBase64, richTextBase64
     }
 
     init(from decoder: Decoder) throws {
@@ -128,6 +130,7 @@ struct ClipboardItem: Identifiable, Codable {
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
         fileURLs = try c.decodeIfPresent([String].self, forKey: .fileURLs) ?? []
         imagePath = try c.decodeIfPresent(String.self, forKey: .imagePath)
+        imageDataBase64 = try c.decodeIfPresent(String.self, forKey: .imageDataBase64)
         richTextBase64 = try c.decodeIfPresent(String.self, forKey: .richTextBase64)
         if let seconds = try c.decodeIfPresent(Double.self, forKey: .createdAt) {
             createdAt = Date(timeIntervalSinceReferenceDate: seconds)
@@ -149,6 +152,7 @@ struct ClipboardItem: Identifiable, Codable {
         try c.encode(createdAt.timeIntervalSinceReferenceDate, forKey: .createdAt)
         try c.encode(fileURLs, forKey: .fileURLs)
         try c.encodeIfPresent(imagePath, forKey: .imagePath)
+        try c.encodeIfPresent(imageDataBase64, forKey: .imageDataBase64)
         try c.encodeIfPresent(richTextBase64, forKey: .richTextBase64)
     }
 }
@@ -235,6 +239,10 @@ struct ClipboardEnvelope: Decodable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         items = (try c.decodeIfPresent([ClipboardItem].self, forKey: .items)) ?? (try? c.decodeIfPresent([ClipboardItem].self, forKey: .data)) ?? []
     }
+}
+
+private struct ClipboardUploadEnvelope: Encodable {
+    let items: [ClipboardItem]
 }
 
 final class XLSXReader {
@@ -395,7 +403,7 @@ final class AppModel: ObservableObject {
     @Published var cloudMessage = ""
     @Published var shortcuts: [ShortcutItem] = []
     @Published var settingsSection = "账号"
-    @Published var isLoggedIn = true
+    @Published var isLoggedIn = false
     @Published var loginPhone = ""
     @Published var loginPassword = ""
     @Published var loginEmail = ""
@@ -405,9 +413,12 @@ final class AppModel: ObservableObject {
     @Published var loginMethod = "sms"
     @Published var registerCode = ""
     @Published var authCodeMessage = ""
+    @Published var authCodeCountdown = 0
 
     private let pasteboard = NSPasteboard.general
     private var pasteboardTimer: Timer?
+    private var cloudSyncTimer: Timer?
+    private var authCodeTimer: Timer?
     private var lastChangeCount = NSPasteboard.general.changeCount
     private var ignoreUntil = Date.distantPast
     private var calculatorValue: Double?
@@ -427,14 +438,19 @@ final class AppModel: ObservableObject {
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base
     }
+    private var cloudAccountID: String?
     private var userID: UUID = UUID()
-    private var userRoot: URL { appSupport.appendingPathComponent("users", isDirectory: true).appendingPathComponent(userID.uuidString, isDirectory: true) }
+    private var storageUserKey: String { cloudAccountID.map { "cloud-\($0)" } ?? userID.uuidString }
+    private var userRoot: URL { appSupport.appendingPathComponent("users", isDirectory: true).appendingPathComponent(storageUserKey, isDirectory: true) }
     private var itemsURL: URL { userRoot.appendingPathComponent("clipboard-items.json") }
     private var qaURL: URL { userRoot.appendingPathComponent("qa-entries.json") }
     private var shortcutsURL: URL { appSupport.appendingPathComponent("shortcuts.json") }
     private var imagesRoot: URL { userRoot.appendingPathComponent("images", isDirectory: true) }
 
     init() {
+        cloudAccountID = UserDefaults.standard.string(forKey: "kjCloudAccountID")
+        let savedToken = UserDefaults.standard.string(forKey: "kjAccessToken")
+        isLoggedIn = !(savedToken?.isEmpty ?? true) && cloudAccountID != nil
         if let saved = UserDefaults.standard.string(forKey: "kjUserID"), let id = UUID(uuidString: saved) {
             userID = id
         } else if let data = try? Data(contentsOf: appSupport.appendingPathComponent("Auth/users.json")),
@@ -479,10 +495,15 @@ final class AppModel: ObservableObject {
         installLocalShortcutMonitor()
         installCalculatorKeyboardMonitor()
         DispatchQueue.main.async { self.applyWindowPreferences() }
+        if !(savedToken?.isEmpty ?? true) {
+            restoreCloudSession()
+        }
     }
 
     deinit {
         pasteboardTimer?.invalidate()
+        cloudSyncTimer?.invalidate()
+        authCodeTimer?.invalidate()
         copyFeedbackTask?.cancel()
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
         if let localKeyboardMonitor { NSEvent.removeMonitor(localKeyboardMonitor) }
@@ -491,11 +512,13 @@ final class AppModel: ObservableObject {
     }
 
     func load() {
+        items = []
+        qaEntries = []
         try? FileManager.default.createDirectory(at: userRoot, withIntermediateDirectories: true)
         let decoder = JSONDecoder()
         if let data = try? Data(contentsOf: itemsURL), let decoded = try? decoder.decode([ClipboardItem].self, from: data) {
             items = decoded
-        } else {
+        } else if cloudAccountID == nil && !isLoggedIn {
             let legacy = appSupport.appendingPathComponent("clipboard-items.json")
             if let data = try? Data(contentsOf: legacy), let decoded = try? decoder.decode([ClipboardItem].self, from: data) {
                 items = decoded
@@ -503,7 +526,7 @@ final class AppModel: ObservableObject {
         }
         if let data = try? Data(contentsOf: qaURL), let decoded = try? decoder.decode([QAEntry].self, from: data) {
             qaEntries = decoded
-        } else {
+        } else if cloudAccountID == nil && !isLoggedIn {
             let legacy = appSupport.appendingPathComponent("qa-entries.json")
             if let data = try? Data(contentsOf: legacy), let decoded = try? decoder.decode([QAEntry].self, from: data) {
                 qaEntries = decoded
@@ -527,12 +550,20 @@ final class AppModel: ObservableObject {
         pasteboardTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.pollClipboard() }
         }
+        cloudSyncTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isLoggedIn else { return }
+                self.syncCloudClipboard()
+            }
+        }
     }
 
     private func pollClipboard() {
         let count = pasteboard.changeCount
         guard count != lastChangeCount else { return }
         lastChangeCount = count
+        // 未登录时只更新系统剪贴板计数，不把内容写入快剪历史。
+        guard isLoggedIn, cloudAccountID != nil else { return }
         guard Date() >= ignoreUntil else { return }
         let source = clipboardSourceName()
         if let imageData = pasteboard.data(forType: .tiff) {
@@ -540,9 +571,11 @@ final class AppModel: ObservableObject {
             try? FileManager.default.createDirectory(at: imagesRoot, withIntermediateDirectories: true)
             let imageURL = imagesRoot.appendingPathComponent("\(UUID().uuidString).tiff")
             if (try? imageData.write(to: imageURL, options: .atomic)) != nil {
-                items.insert(ClipboardItem(title: "图片", text: "", kind: .image, source: source, imagePath: imageURL.path), at: 0)
+                items.insert(ClipboardItem(title: "图片", text: "", kind: .image, source: source,
+                                           imagePath: imageURL.path, imageDataBase64: imageData.base64EncodedString()), at: 0)
                 items = Array(items.prefix(500))
                 save()
+                syncCloudClipboard()
             }
             return
         }
@@ -558,6 +591,7 @@ final class AppModel: ObservableObject {
         items.insert(ClipboardItem(title: text, text: text, kind: kind, source: source, richTextBase64: richTextData), at: 0)
         items = Array(items.prefix(500))
         save()
+        syncCloudClipboard()
     }
 
     private func clipboardSourceName() -> String {
@@ -569,8 +603,12 @@ final class AppModel: ObservableObject {
     func copy(_ item: ClipboardItem) {
         ignoreUntil = Date().addingTimeInterval(0.6)
         pasteboard.clearContents()
-        if item.kind == .image, let path = item.imagePath, let image = NSImage(contentsOfFile: path) {
-            pasteboard.writeObjects([image])
+        if item.kind == .image {
+            if let path = item.imagePath, let image = NSImage(contentsOfFile: path) {
+                pasteboard.writeObjects([image])
+            } else if let encoded = item.imageDataBase64, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
+                pasteboard.writeObjects([image])
+            }
         } else {
             pasteboard.setString(item.text, forType: .string)
             if let encoded = item.richTextBase64, let data = Data(base64Encoded: encoded) {
@@ -1180,6 +1218,89 @@ final class AppModel: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
+    private func establishServerSession(from data: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = object["token"] as? String,
+              !token.isEmpty,
+              let user = object["user"] as? [String: Any],
+              let rawAccountID = user["id"] else { return false }
+        let accountID = String(describing: rawAccountID).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !accountID.isEmpty else { return false }
+        UserDefaults.standard.set(token, forKey: "kjAccessToken")
+        isLoggedIn = true
+        activateCloudAccount(accountID)
+        return true
+    }
+
+    private func activateCloudAccount(_ accountID: String) {
+        let normalized = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+        let changed = cloudAccountID != normalized
+        cloudAccountID = normalized
+        UserDefaults.standard.set(normalized, forKey: "kjCloudAccountID")
+        if changed {
+            // 切换账号时先清空内存，再从新账号目录加载，避免上一账号内容短暂可见。
+            items = []
+            qaEntries = []
+        }
+        load()
+    }
+
+    private func restoreCloudSession() {
+        guard let token = UserDefaults.standard.string(forKey: "kjAccessToken"), !token.isEmpty,
+              let url = URL(string: "https://api.kuaijian.jingronghao.com/v1/auth/me") else { return }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        Task { @MainActor in
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                      let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let user = object["user"] as? [String: Any],
+                      let rawAccountID = user["id"] else { throw URLError(.userAuthenticationRequired) }
+                let accountID = String(describing: rawAccountID)
+                guard !accountID.isEmpty else { throw URLError(.userAuthenticationRequired) }
+                isLoggedIn = true
+                activateCloudAccount(accountID)
+                fetchDevices()
+                syncCloudClipboard()
+            } catch {
+                // 会话失效时不保留旧账号内容，也不把本地旧文件回退到新会话。
+                UserDefaults.standard.removeObject(forKey: "kjAccessToken")
+                UserDefaults.standard.removeObject(forKey: "kjCloudAccountID")
+                cloudAccountID = nil
+                isLoggedIn = false
+                items = []
+                qaEntries = []
+                devices = []
+            }
+        }
+    }
+
+    func logoutFromServer() {
+        let token = UserDefaults.standard.string(forKey: "kjAccessToken")
+        if let token, let url = URL(string: "https://api.kuaijian.jingronghao.com/v1/auth/logout") {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = Data("{}".utf8)
+            Task { _ = try? await URLSession.shared.data(for: request) }
+        }
+        UserDefaults.standard.removeObject(forKey: "kjAccessToken")
+        UserDefaults.standard.removeObject(forKey: "kjCloudAccountID")
+        cloudAccountID = nil
+        isLoggedIn = false
+        items = []
+        qaEntries = []
+        devices = []
+        deviceMessage = ""
+        cloudMessage = ""
+        transferMessage = ""
+        loginMessage = ""
+        authCodeMessage = ""
+    }
+
     func loginToServer() {
         let phone = loginPhone.trimmingCharacters(in: .whitespacesAndNewlines)
         if loginMethod == "sms" {
@@ -1213,13 +1334,13 @@ final class AppModel: ObservableObject {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
                 if (200..<300).contains(http.statusCode) {
-                    if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                       let token = object["token"] as? String {
-                        UserDefaults.standard.set(token, forKey: "kjAccessToken")
+                    guard establishServerSession(from: data) else {
+                        loginMessage = "登录响应无效，请稍后重试"
+                        return
                     }
-                    isLoggedIn = true
                     loginMessage = "登录成功"
                     fetchDevices()
+                    syncCloudClipboard()
                 } else {
                     loginMessage = "登录失败，请检查手机号和登录凭证"
                 }
@@ -1256,11 +1377,13 @@ final class AppModel: ObservableObject {
                     loginMessage = "注册失败，手机号可能已注册或验证码无效"
                     return
                 }
-                if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let token = object["token"] as? String {
-                    UserDefaults.standard.set(token, forKey: "kjAccessToken")
+                guard establishServerSession(from: data) else {
+                    loginMessage = "注册响应无效，请稍后重试"
+                    return
                 }
-                isLoggedIn = true
                 loginMessage = "注册成功"
+                fetchDevices()
+                syncCloudClipboard()
             } catch {
                 loginMessage = "云端暂时不可用，请稍后重试"
             }
@@ -1270,6 +1393,7 @@ final class AppModel: ObservableObject {
     func sendAuthCode() {
         let phone = loginPhone.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !phone.isEmpty else { authCodeMessage = "请先输入手机号"; return }
+        guard authCodeCountdown == 0 else { return }
         let path = authMode == "register" ? "/v1/auth/register/send-code" : "/v1/auth/login/send-code"
         guard let url = URL(string: "https://api.kuaijian.jingronghao.com\(path)") else { return }
         var request = URLRequest(url: url)
@@ -1283,6 +1407,7 @@ final class AppModel: ObservableObject {
                 guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
                 if (200..<300).contains(http.statusCode) {
                     authCodeMessage = "验证码已发送，请查收短信"
+                    startAuthCodeCountdown()
                 } else if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let error = object["error"] as? String {
                     authCodeMessage = error == "sms_cooldown" ? "验证码发送过于频繁，请稍后再试" : "验证码发送失败：\(error)"
                 } else {
@@ -1290,6 +1415,27 @@ final class AppModel: ObservableObject {
                 }
             } catch {
                 authCodeMessage = "云端暂时不可用，请稍后重试"
+            }
+        }
+    }
+
+    var authCodeButtonTitle: String {
+        authCodeCountdown > 0 ? "\(authCodeCountdown)秒后重试" : "获取验证码"
+    }
+
+    private func startAuthCodeCountdown() {
+        authCodeTimer?.invalidate()
+        authCodeCountdown = 60
+        authCodeTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            Task { @MainActor [weak self] in
+                guard let self else { timer.invalidate(); return }
+                if self.authCodeCountdown <= 1 {
+                    self.authCodeCountdown = 0
+                    timer.invalidate()
+                    self.authCodeTimer = nil
+                } else {
+                    self.authCodeCountdown -= 1
+                }
             }
         }
     }
@@ -1329,7 +1475,8 @@ final class AppModel: ObservableObject {
     }
 
     func fetchDevices() {
-        guard let token = UserDefaults.standard.string(forKey: "kjAccessToken"), !token.isEmpty,
+        guard isLoggedIn, cloudAccountID != nil,
+              let token = UserDefaults.standard.string(forKey: "kjAccessToken"), !token.isEmpty,
               let url = URL(string: "https://api.kuaijian.jingronghao.com/v1/devices") else {
             deviceMessage = "登录云端后可查看设备"
             return
@@ -1350,7 +1497,8 @@ final class AppModel: ObservableObject {
     }
 
     func sendClipboardToDevice(_ device: DeviceItem) {
-        guard let token = UserDefaults.standard.string(forKey: "kjAccessToken"), !token.isEmpty,
+        guard isLoggedIn, cloudAccountID != nil,
+              let token = UserDefaults.standard.string(forKey: "kjAccessToken"), !token.isEmpty,
               let url = URL(string: "https://api.kuaijian.jingronghao.com/v1/transfers") else {
             transferMessage = "请先登录云端"
             return
@@ -1374,8 +1522,24 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func hydrateRemoteImages(_ remote: [ClipboardItem]) -> [ClipboardItem] {
+        remote.map { item in
+            guard item.kind == .image,
+                  let encoded = item.imageDataBase64,
+                  let data = Data(base64Encoded: encoded) else { return item }
+            if let path = item.imagePath, FileManager.default.fileExists(atPath: path) { return item }
+            try? FileManager.default.createDirectory(at: imagesRoot, withIntermediateDirectories: true)
+            let path = imagesRoot.appendingPathComponent("\(item.id.uuidString).tiff").path
+            guard (try? data.write(to: URL(fileURLWithPath: path), options: .atomic)) != nil else { return item }
+            var hydrated = item
+            hydrated.imagePath = path
+            return hydrated
+        }
+    }
+
     func syncCloudClipboard() {
-        guard let token = UserDefaults.standard.string(forKey: "kjAccessToken"), !token.isEmpty,
+        guard isLoggedIn, cloudAccountID != nil,
+              let token = UserDefaults.standard.string(forKey: "kjAccessToken"), !token.isEmpty,
               let url = URL(string: "https://api.kuaijian.jingronghao.com/v1/clipboard") else {
             cloudMessage = "请先登录云端"
             return
@@ -1387,13 +1551,26 @@ final class AppModel: ObservableObject {
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
-                let remote = try JSONDecoder().decode(ClipboardEnvelope.self, from: data).items
+                let remote = hydrateRemoteImages(try JSONDecoder().decode(ClipboardEnvelope.self, from: data).items)
                 var merged = remote
                 let remoteIDs = Set(remote.map(\.id))
                 merged.append(contentsOf: items.filter { !remoteIDs.contains($0.id) })
                 items = merged.sorted { $0.createdAt > $1.createdAt }
                 save()
-                cloudMessage = "已读取云端 \(remote.count) 条，当前共 \(items.count) 条"
+                var upload = URLRequest(url: url)
+                upload.httpMethod = "PUT"
+                upload.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                upload.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                let uploadItems = items.map { item -> ClipboardItem in
+                    var sanitized = item
+                    if sanitized.kind == .image { sanitized.imagePath = nil }
+                    return sanitized
+                }
+                upload.httpBody = try JSONEncoder().encode(ClipboardUploadEnvelope(items: uploadItems))
+                let (_, uploadResponse) = try await URLSession.shared.data(for: upload)
+                guard let uploadHTTP = uploadResponse as? HTTPURLResponse,
+                      (200..<300).contains(uploadHTTP.statusCode) else { throw URLError(.cannotWriteToFile) }
+                cloudMessage = "已同步云端 \(items.count) 条"
             } catch {
                 cloudMessage = "云端剪贴板同步失败，请检查登录状态"
             }

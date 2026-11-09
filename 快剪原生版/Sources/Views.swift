@@ -309,7 +309,7 @@ private struct LoginForm: View {
             if model.loginMethod == "sms" {
                 HStack(spacing: 10) {
                     AuthField(text: $model.registerCode, placeholder: "请输入 6 位验证码", icon: "checkmark.shield", field: .code, width: 238, passwordVisible: .constant(false), focusedField: focusedField)
-                    AuthSecondaryButton(title: "获取验证码") { model.sendAuthCode() }
+                    AuthSecondaryButton(title: model.authCodeButtonTitle, disabled: model.authCodeCountdown > 0) { model.sendAuthCode() }
                 }
             } else {
                 AuthField(text: $model.loginPassword, placeholder: "请输入密码", icon: "lock", field: .password, secure: true, passwordVisible: $passwordVisible, focusedField: focusedField)
@@ -347,7 +347,7 @@ private struct RegisterForm: View {
             AuthLabel(title: "短信验证码").padding(.top, 15)
             HStack(spacing: 10) {
                 AuthField(text: $model.registerCode, placeholder: "6 位验证码", icon: "checkmark.shield", field: .code, width: 238, passwordVisible: .constant(false), focusedField: focusedField)
-                AuthSecondaryButton(title: "获取") { model.sendAuthCode() }
+                AuthSecondaryButton(title: model.authCodeButtonTitle, disabled: model.authCodeCountdown > 0) { model.sendAuthCode() }
             }
             AuthLabel(title: "密码").padding(.top, 15)
             AuthField(text: $model.loginPassword, placeholder: "至少 6 位", icon: "lock", field: .password, secure: true, passwordVisible: $passwordVisible, focusedField: focusedField)
@@ -364,7 +364,13 @@ private struct RegisterForm: View {
 
 private struct AuthSecondaryButton: View {
     let title: String
+    let disabled: Bool
     let action: () -> Void
+    init(title: String, disabled: Bool = false, action: @escaping () -> Void) {
+        self.title = title
+        self.disabled = disabled
+        self.action = action
+    }
     var body: some View {
         Button(action: action) {
             Text(title)
@@ -377,6 +383,8 @@ private struct AuthSecondaryButton: View {
                 .contentShape(RoundedRectangle(cornerRadius: 11))
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.62 : 1)
     }
 }
 
@@ -1462,11 +1470,18 @@ struct AccountSettings: View {
                 .font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.kjInk)
             Text("账号、手机号、验证码和密码只在登录页面填写；这里不重复显示登录表单。")
                 .font(.system(size: 13)).foregroundStyle(Color.kjMuted)
-            ActionButton(title: "打开登录页面", icon: "person.crop.circle", filled: true) {
-                dismiss()
-                model.loginMessage = ""
-                model.authCodeMessage = ""
-                model.isLoggedIn = false
+            if model.isLoggedIn {
+                ActionButton(title: "退出登录", icon: "rectangle.portrait.and.arrow.right", filled: true) {
+                    model.logoutFromServer()
+                    dismiss()
+                }
+            } else {
+                ActionButton(title: "打开登录页面", icon: "person.crop.circle", filled: true) {
+                    dismiss()
+                    model.loginMessage = ""
+                    model.authCodeMessage = ""
+                    model.isLoggedIn = false
+                }
             }
             Spacer()
         }
